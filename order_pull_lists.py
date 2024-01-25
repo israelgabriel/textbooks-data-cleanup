@@ -53,7 +53,7 @@ bkstr_file_date = re.sub(" ", "", ((re.search('\s(.*)', bkstr_file_name)).group(
 bkstr_file_with_path = "G:\Acquisitions & Discovery\Data Projects & Partnerships Unit\Textbooks\semesters\\" + sem_folder + "\\" + bkstr_file_name + ".xlsx"
 
 # **********************************
-# Handling Previously Ordered Titles
+# Handling Previously Ordered and Pulled Titles
 # **********************************
 
 # Retrieve ISBNs from previous order lists, if they exist. These will be excluded from the bookstore list.
@@ -67,11 +67,21 @@ for file in prev_ord_lists:
 prev_ord_isbns = list(set(prev_ord_isbns))
 prev_ord_df = pd.DataFrame({'Previously Ordered ISBNs': prev_ord_isbns}).astype(str)
 
+# Do the same with previous pull lists.
+prev_pull_isbns = []
+
+for file in prev_pull_lists:
+    temp_pull_df = pd.read_excel("G:\Acquisitions & Discovery\Data Projects & Partnerships Unit\Textbooks\semesters\\" + sem_folder + "\\" + file, sheet_name='Pull List').fillna('')
+    prev_pull_isbns.extend(temp_pull_df["Bookstore ISBN"])
+
+prev_pull_isbns = list(set(prev_pull_isbns))
+
 # Create a dataframe from the "For database process" tab of the bookstore list.
 tb_df = pd.read_excel(bkstr_file_with_path, sheet_name='formatted for DB processing').fillna('')
 
-# Remove ISBN matches of previous order lists from the current bookstore list.
+# Remove ISBN matches of previous order lists from the current bookstore list. Do the same for previously pulled ISBNs.
 tb_df = tb_df[~tb_df["ISBN-13"].isin(prev_ord_isbns)]
+tb_df = tb_df[~tb_df["ISBN-13"].isin(prev_pull_isbns)]
 
 # *********************************************************
 # Handling Special Titles (Excluded and Replacement Titles)
@@ -151,10 +161,10 @@ for key in replacement_isbns.keys():
                 unique_isbns.remove(isbn)
 
 # Status update messages. This script currently takes around 40 minutes to run on 1,200 items, so having status updates is helpful to note where the script is at in processing.
-print("\nStarting up...")
 print("\n********************************************************************************************\nProcessing " + str(len(unique_isbns)) + " ISBNs.")
 print(str(len(excl_matches)) + " ISBNs will be excluded. Check 'Excluded Titles' tab on the order list for details.")
 print(str(len(prev_ord_isbns)) + " ISBNs were previously ordered. Check 'Previously Ordered' tab on the order list for details.")
+print(str(len(prev_pull_isbns)) + " ISBNs were previously pulled. These will be excluded from the pull list.")
 print("**********************************************************************************************\n")
 
 # Detailed overview:
@@ -303,14 +313,14 @@ def handle_missing_json(element, json_var):
     else:
         return ""
 
-# Compiled list of previously pulled catkeys.    
-prev_pull_catkeys = []
+# # Compiled list of previously pulled catkeys.    
+# prev_pull_catkeys = []
 
-for file in prev_pull_lists:
-    temp_pull_df = pd.read_excel("G:\Acquisitions & Discovery\Data Projects & Partnerships Unit\Textbooks\semesters\\" + sem_folder + "\\" + file, sheet_name='Pull List').fillna('')
-    prev_pull_catkeys.extend(temp_pull_df["Catkey"])
+# for file in prev_pull_lists:
+#     temp_pull_df = pd.read_excel("G:\Acquisitions & Discovery\Data Projects & Partnerships Unit\Textbooks\semesters\\" + sem_folder + "\\" + file, sheet_name='Pull List').fillna('')
+#     prev_pull_catkeys.extend(temp_pull_df["Catkey"])
 
-catkeys = [key for key in catkeys if key not in prev_pull_catkeys]
+# # catkeys = [key for key in catkeys if key not in prev_pull_catkeys]
 
 # Detailed overview:
 # For every catkey in the list of catkeys we scraped from the catalog earlier, scrape the JSON for that catkey.
@@ -319,7 +329,7 @@ catkeys = [key for key in catkeys if key not in prev_pull_catkeys]
 for catkey in catkeys:
     item_url = catalog_url + "/catalog/NCSU" + str(catkey) + ".json"
     r = requests.get(item_url)
-    if r.status_code != 204:
+    if r.status_code != 204 or r.status_code != 404:
         item_json = r.json()
         isbns = '\n'.join(handle_missing_json("isbn", item_json))
         all_isbns.append(isbns)
